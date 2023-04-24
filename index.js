@@ -1,33 +1,144 @@
+const TelegramBot = require("node-telegram-bot-api");
+const axios = require("axios");
+const fs = require("fs");
 require("dotenv").config();
-const express = require("express"),
-    bodyParser = require("body-parser"),
-    axios = require("axios");
+const exp = "Here's an example \n arabic: اخرج من ذلك المكان \n tamasheq: ازجر دغ أدج وديد";
+const { TOKEN } = process.env;
 
-const { TOKEN, SERVER_URL } = process.env;
-const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const URI = `/webhook/${TOKEN}`;
-const WEBHOOK_URL = SERVER_URL + URI;
+console.log(TOKEN);
+const bot = new TelegramBot(TOKEN, { polling: true });
 
-const app = express();
-app.use(bodyParser.json());
+bot.on("message", async(msg) => {
 
-const init = async() => {
-    const res = await axios.get(`${TELEGRAM_API}/setWebhook?url=${WEBHOOK_URL}`);
-    console.log(res.data);
+    console.log(msg);
+    console.table({ message: msg.text })
+    const chatId = msg.chat.id;
+    const userInput = msg.text;
+    if (userInput != "/start") return;
+    bot.sendMessage(chatId, "Would you like to help us collecting Tamasheq data?", {
+        "reply_markup": {
+            "inline_keyboard": [
+                [{
+                    text: "Yes",
+                    callback_data: "yes",
+                }, {
+                    text: "No",
+                    callback_data: "no",
+                }]
+            ]
+        }
+    });
+});
+
+
+
+
+// Handle callback queries 
+bot.on('callback_query', async function onCallbackQuery(callbackQuery) {
+    const action = callbackQuery.data;
+    const msg = callbackQuery.message;
+    const chatId = msg.chat.id;
+    const opts = {
+        chat_id: msg.chat.id,
+        // message_id: msg.message_id,
+    };
+
+    if (action === 'yes') {
+        // text = 'jri';
+        bot.deleteMessage(chatId, msg.message_id);
+        yes_handle(chatId)
+    } else if (action === 'no') {
+        // text = 'ma tjrich';
+        bot.deleteMessage(chatId, msg.message_id)
+    } else if (action === 'accept') {
+        // text = 'acceptinsd';
+        bot.deleteMessage(chatId, msg.message_id)
+        accept_handle(chatId);
+
+
+    }
+
+});
+
+const yes_handle = async(chatId) => {
+    bot.sendMessage(chatId, exp, {
+        "reply_markup": {
+            "inline_keyboard": [
+                [{
+                    text: "accept",
+                    callback_data: "accept",
+                }, {
+                    text: "Cancel",
+                    callback_data: "no",
+                }]
+            ]
+        }
+    });
 }
 
-app.post(URI, async(req, res) => {
-    console.log(req.body);
+const no_handle = async(chatId) => {
+    bot.sendMessage(chatId, "Thank you for your help.\nIf you would like to start again, type /start", {
+        "reply_markup": {
+            "inline_keyboard": [
+                [{
+                    text: "accept",
+                    callback_data: "accept",
+                }, {
+                    text: "Cancel",
+                    callback_data: "no",
+                }]
+            ]
+        }
+    });
+}
 
-    const chatId = req.body.message.chat.id;
-    const text = req.body.message.text;
 
-    await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text });
+const accept_handle = async(chatId) => {
+    // read the file containing Arabic sentences
+    await fs.readFile("arabic.txt", "utf8", async(err, data) => {
+        if (err) {
+            console.error(err);
+            return;
+        }
 
-    return res.send();
-})
+        // split the sentences by newline
+        const sentences = data.split("\n");
 
-app.listen(process.env.PORT || 5000, async() => {
-    console.log('app running on port ', process.env.PORT || 5000);
-    await init();
-})
+        // pick the first sentence
+        const sentence = sentences[0];
+
+        // send the sentence to the chat
+        await bot.sendMessage(chatId, `Translate to Tamasheq:\n ${sentence}`);
+
+        // wait for the client's response
+        await bot.once("message", async(msg) => {
+            // write the response in the tamasheq.txt file
+            await fs.appendFile("tamasheq.txt", `${sentence}\t${msg.text}\t${msg.from.id}\n`, (err) => {
+                if (err) console.error(err);
+            });
+
+            // remove the sentence from the arabic.txt file
+            await sentences.shift();
+            await fs.writeFile("arabic.txt", sentences.join("\n"), (err) => {
+                if (err) console.error(err);
+            });
+            await bot.sendMessage(chatId, "Would you like to continue?", {
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [{
+                            text: "Yes",
+                            callback_data: "accept",
+                        }, {
+                            text: "No",
+                            callback_data: "no",
+                        }]
+                    ]
+                }
+            });
+            return;
+        });
+    });
+
+
+
+};
