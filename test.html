@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Simple Voice Recorder</title>
+</head>
+
+<body>
+    <h1>Simple Voice Recorder</h1>
+    <p>Click the button below to start recording.</p>
+    <button onclick="startRecording()">Start Recording</button>
+    <button onclick="stopRecording()">Stop Recording</button>
+    <audio id="recordedAudio"></audio>
+    <script>
+        let mediaRecorder;
+        let recordedChunks = [];
+
+        function startRecording() {
+            navigator.mediaDevices.getUserMedia({
+                    audio: true
+                })
+                .then(stream => {
+                    mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.addEventListener('dataavailable', event => {
+                        recordedChunks.push(event.data);
+                    });
+                    mediaRecorder.start();
+                });
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+            const recordedBlob = new Blob(recordedChunks, {
+                type: 'audio/ogg'
+            });
+            const recordedUrl = URL.createObjectURL(recordedBlob);
+            const recordedAudio = document.getElementById('recordedAudio');
+            recordedAudio.src = recordedUrl;
+            recordedAudio.controls = true;
+        }
+    </script>
+</body>
+
+</html>
